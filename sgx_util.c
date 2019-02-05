@@ -221,7 +221,7 @@ static struct sgx_encl_page *sgx_do_fault(struct vm_area_struct *vma,
 	struct sgx_epc_page *secs_epc_page = NULL;
 	bool reserve = (flags & SGX_FAULT_RESERVE) != 0;
 	int rc = 0;
-	bool write = (vmf) ? (FAULT_FLAG_WRITE & vmf->flags) : false;
+	//bool write = (vmf) ? (FAULT_FLAG_WRITE & vmf->flags) : false;
 
 	/* If process was forked, VMA is still there but vm_private_data is set
 	 * to NULL.
@@ -232,10 +232,12 @@ static struct sgx_encl_page *sgx_do_fault(struct vm_area_struct *vma,
 	mutex_lock(&encl->lock);
 
 	entry = radix_tree_lookup(&encl->page_tree, addr >> PAGE_SHIFT);
+#if 0
 	if (vmf && !entry) {
 		entry = sgx_encl_augment(vma, addr, write);
 		goto out;
 	}
+#endif
 
 	/* No entry found can not happen in 'reloading an evicted page'
 	 * flow.

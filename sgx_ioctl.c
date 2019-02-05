@@ -368,6 +368,76 @@ long sgx_ioc_page_remove(struct file *filep, unsigned int cmd,
 	return ret;
 }
 
+/**
+ * sgx_ioc_page_augment() - pages in the range will be augmented with EAUG.
+ * @arg range address of pages to be augmented
+ */
+long sgx_ioc_page_augment(struct file *filep, unsigned int cmd,
+		       unsigned long arg)
+{
+	struct sgx_encl *encl = NULL;
+	struct vm_area_struct *vma = NULL;
+	struct sgx_range *range = (struct sgx_range *)arg;
+	unsigned long addr = range->start_addr & ~(PAGE_SIZE-1);
+	long rc = 0;
+	unsigned int npages;
+
+	if (!sgx_has_sgx2)
+		return -ENOSYS;
+
+	if (sgx_get_encl(addr, &encl) != 0) {
+		pr_warn("sgx: No enclave found at start address 0x%lx\n", addr);
+		return -EINVAL;
+	}
+
+/*
+	down_read(&encl->mm->mmap_sem);
+	if (sgx_encl_find(encl->mm, addr, &vma) != 0) {
+		pr_warn("sgx: No VMA for enclave addr 0x%lx\n", addr);
+		up_read(&encl->mm->mmap_sem);
+		kref_put(&encl->refcount, sgx_encl_release);
+		return -EINVAL;
+	}
+	up_read(&encl->mm->mmap_sem);
+*/
+
+	for (npages = range->nr_pages; npages > 0; npages--, addr += PAGE_SIZE)
+	{
+		down_read(&encl->mm->mmap_sem);
+		if (sgx_encl_find(encl->mm, addr, &vma) != 0) {
+			pr_warn("sgx: No VMA for enclave addr 0x%lx\n", addr);
+			up_read(&encl->mm->mmap_sem);
+			rc = -EINVAL;
+			break;
+		}
+		up_read(&encl->mm->mmap_sem);
+
+		struct sgx_encl_page *page = sgx_encl_augment(vma, addr, false);
+		if (IS_ERR_OR_NULL(page)) {
+			pr_warn("sgx: failed to augment enclave addr 0x%lx\n", addr);
+			rc = -EFAULT;
+			break;
+		}
+	}
+
+	if (rc != 0)
+	{
+		unsigned long unmapAddr = range->start_addr & ~(PAGE_SIZE-1);
+		for (; unmapAddr < addr; unmapAddr += PAGE_SIZE)
+		{
+			int ret = remove_page(encl, unmapAddr, false);
+			if (ret) {
+				pr_warn("sgx: Failed to remove page, address=0x%lx ret=%d\n",
+					unmapAddr, ret);
+			}
+		}
+	}
+
+	kref_put(&encl->refcount, sgx_encl_release);
+
+	return rc;
+}
+
 typedef long (*sgx_ioc_t)(struct file *filep, unsigned int cmd,
 			  unsigned long arg);
 
@@ -401,6 +471,9 @@ long sgx_ioctl(struct file *filep, unsigned int cmd, unsigned long arg)
 		break;
 	case SGX_IOC_ENCLAVE_PAGE_REMOVE:
 		handler = sgx_ioc_page_remove;
+		break;
+	case SGX_IOC_ENCLAVE_PAGE_AUGMENT:
+		handler = sgx_ioc_page_augment;
 		break;
 	default:
 		return -ENOIOCTLCMD;

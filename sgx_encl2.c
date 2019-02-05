@@ -81,7 +81,7 @@ struct sgx_encl_page *sgx_encl_augment(struct vm_area_struct *vma,
 				       bool write)
 {
 	struct sgx_pageinfo pginfo;
-	struct sgx_epc_page *epc_page, *va_page = NULL;
+	struct sgx_epc_page *epc_page;//, *va_page = NULL;
 	struct sgx_epc_page *secs_epc_page = NULL;
 	struct sgx_encl_page *encl_page;
 	struct sgx_encl *encl = (struct sgx_encl *) vma->vm_private_data;
@@ -96,47 +96,55 @@ struct sgx_encl_page *sgx_encl_augment(struct vm_area_struct *vma,
 	if (unlikely(!(vma->vm_flags & VM_WRITE)))
 		return ERR_PTR(-EFAULT);
 
-	addr &= ~(PAGE_SIZE-1);
-
-	/* Note: Invoking function holds the encl->lock */
-
-	epc_page = sgx_alloc_page(SGX_ALLOC_ATOMIC);
-	if (IS_ERR(epc_page)) {
-		return ERR_PTR(PTR_ERR(epc_page));
-	}
-
-	va_page = sgx_alloc_page(SGX_ALLOC_ATOMIC);
-	if (IS_ERR(va_page)) {
-		sgx_free_page(epc_page, encl);
-		return ERR_PTR(PTR_ERR(va_page));
-	}
-
-	encl_page = kzalloc(sizeof(struct sgx_encl_page), GFP_KERNEL);
-	if (!encl_page) {
-		sgx_free_page(epc_page, encl);
-		sgx_free_page(va_page, encl);
-		return ERR_PTR(-EFAULT);
-	}
-
 	if (!(encl->flags & SGX_ENCL_INITIALIZED))
-		goto out;
+		return ERR_PTR(-EFAULT);
 
 	if (encl->flags & (SGX_ENCL_SUSPEND | SGX_ENCL_DEAD))
-		goto out;
+		return ERR_PTR(-EFAULT);
 
 	/*
 	if ((rg->rg_desc.flags & SGX_GROW_DOWN_FLAG) && !write)
 		goto out;
 	*/
 
+	addr &= ~(PAGE_SIZE-1);
+
+	epc_page = sgx_alloc_page(0 /*SGX_ALLOC_ATOMIC*/);
+	if (IS_ERR(epc_page)) {
+		pr_err("sgx: failed to alloc page\n");
+		return ERR_PTR(PTR_ERR(epc_page));
+	}
+
+#if 0
+	va_page = sgx_alloc_page(0 /*SGX_ALLOC_ATOMIC*/);
+	if (IS_ERR(va_page)) {
+		pr_err("sgx: failed to alloc VA page\n");
+		sgx_free_page(epc_page, encl);
+		return ERR_PTR(PTR_ERR(va_page));
+	}
+#endif
+
+	encl_page = kzalloc(sizeof(struct sgx_encl_page), GFP_KERNEL);
+	if (!encl_page) {
+		pr_err("sgx: failed to kzalloc encl_page\n");
+		sgx_free_page(epc_page, encl);
+		//sgx_free_page(va_page, encl);
+		return ERR_PTR(-EFAULT);
+	}
+
+	mutex_lock(&encl->lock);
+
 	/* Start the augmenting process */
-	ret = sgx_init_page(encl, encl_page, addr, 0, &va_page, true);
-	if (ret)
+	ret = sgx_init_page(encl, encl_page, addr, 0, NULL, true);
+	if (ret) {
+		pr_err("sgx: failed to sgx_init_page %d\n", ret);
 		goto out;
+	}
 
 	/* If SECS is evicted then reload it first */
 	/* Same steps as in sgx_do_fault */
 	if (encl->flags & SGX_ENCL_SECS_EVICTED) {
+		pr_warn("sgx: SECS evicted...\n");
 		secs_epc_page = sgx_alloc_page(SGX_ALLOC_ATOMIC);
 		if (IS_ERR(secs_epc_page)) {
 			ret = PTR_ERR(secs_epc_page);
@@ -195,8 +203,10 @@ struct sgx_encl_page *sgx_encl_augment(struct vm_area_struct *vma,
 	list_add_tail(&encl_page->epc_page->list, &encl->load_list);
 	encl_page->flags |= SGX_ENCL_PAGE_ADDED;
 
-	if (va_page)
-		sgx_free_page(va_page, encl);
+	mutex_unlock(&encl->lock);
+
+	//if (va_page)
+	//	sgx_free_page(va_page, encl);
 	if (secs_epc_page)
 		sgx_free_page(secs_epc_page, encl);
 
@@ -207,17 +217,19 @@ struct sgx_encl_page *sgx_encl_augment(struct vm_area_struct *vma,
 	 * We return SIGBUS such that the OS invokes the enclave's exception
 	 * handler which will execute eaccept.
 	 */
-	if (write)
-		return ERR_PTR(-EFAULT);
+	//if (write)
+	//	return ERR_PTR(-EFAULT);
 
 	return encl_page;
 
 out:
+	mutex_unlock(&encl->lock);
+
 	if (encl_page->va_offset)
 		sgx_free_va_slot(encl_page->va_page, encl_page->va_offset);
 	sgx_free_page(epc_page, encl);
-	if (va_page)
-		sgx_free_page(va_page, encl);
+	//if (va_page)
+	//	sgx_free_page(va_page, encl);
 	kfree(encl_page);
 	if (secs_epc_page)
 		sgx_free_page(secs_epc_page, encl);
