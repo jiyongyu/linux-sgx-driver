@@ -267,6 +267,10 @@ static struct sgx_encl_page *sgx_do_fault(struct vm_area_struct *vma,
 	if (entry->epc_page) {
 		if (reserve)
 			entry->flags |= SGX_ENCL_PAGE_RESERVED;
+		else if (vmf != NULL && flags == 0) {
+			printk(KERN_ALERT "sgx_do_fault: %lx already present %x\n", addr, vmf->flags);
+			rc = -EFAULT;
+		}
 		goto out;
 	}
 
