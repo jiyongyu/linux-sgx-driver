@@ -215,7 +215,7 @@ struct sgx_einittoken_payload {
 	uint8_t reserved2[32];
 	uint8_t mrsigner[32];
 	uint8_t reserved3[32];
-};
+} __attribute__((__packed__));
 
 struct sgx_einittoken {
 	struct sgx_einittoken_payload payload;
@@ -228,7 +228,7 @@ struct sgx_einittoken {
 	uint64_t maskedxfrmle;
 	uint8_t keyid[32];
 	uint8_t mac[16];
-};
+} __attribute__((__packed__));
 
 struct sgx_report {
 	uint8_t cpusvn[16];

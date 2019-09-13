@@ -1,19 +1,21 @@
 ifneq ($(KERNELRELEASE),)
 	isgx-y := \
+		sgx_le_proxy_piggy.o \
 		sgx_main.o \
 		sgx_page_cache.o \
 		sgx_ioctl.o \
 		sgx_vma.o \
 		sgx_util.o\
 		sgx_encl.o \
-		sgx_encl2.o
+		sgx_encl2.o \
+		sgx_le.o
 	obj-m += isgx.o
 else
 KDIR := /lib/modules/$(shell uname -r)/build
 PWD  := $(shell pwd)
 
 default:
-	$(MAKE) -C $(KDIR) SUBDIRS=$(PWD) modules
+	$(MAKE) -C $(KDIR) SUBDIRS=$(PWD) AFLAGS_MODULE="-I$(PWD)" modules
 
 install: default
 	$(MAKE) INSTALL_MOD_DIR=kernel/drivers/intel/sgx -C $(KDIR) M=$(PWD) modules_install

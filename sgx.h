@@ -61,6 +61,7 @@
 #define __ARCH_INTEL_SGX_H__
 
 #include "sgx_asm.h"
+#include <crypto/hash.h>
 #include <linux/kref.h>
 #include <linux/version.h>
 #include <linux/rbtree.h>
@@ -72,6 +73,14 @@
 #include <linux/mm.h>
 #include "sgx_arch.h"
 #include "sgx_user.h"
+
+/* Intel SGX MSRs */
+#ifndef MSR_IA32_SGXLEPUBKEYHASH0
+    #define MSR_IA32_SGXLEPUBKEYHASH0	0x0000008C
+    #define MSR_IA32_SGXLEPUBKEYHASH1	0x0000008D
+    #define MSR_IA32_SGXLEPUBKEYHASH2	0x0000008E
+    #define MSR_IA32_SGXLEPUBKEYHASH3	0x0000008F
+#endif
 
 #define SGX_EINIT_SPIN_COUNT	20
 #define SGX_EINIT_SLEEP_COUNT	50
@@ -185,6 +194,8 @@ struct sgx_epc_bank {
 	unsigned long size;
 };
 
+extern unsigned char sgx_le_proxy[];
+extern unsigned char sgx_le_proxy_end[];
 extern struct workqueue_struct *sgx_add_page_wq;
 extern struct sgx_epc_bank sgx_epc_banks[];
 extern int sgx_nr_epc_banks;
@@ -193,8 +204,11 @@ extern u64 sgx_encl_size_max_64;
 extern u64 sgx_xfrm_mask;
 extern u32 sgx_misc_reserved;
 extern u32 sgx_xsave_size_tbl[64];
+extern u64 sgx_le_pubkeyhash[4];
 extern bool sgx_has_sgx2;
+extern bool sgx_unlocked_msrs;
 
+extern const struct file_operations sgx_fops;
 extern const struct vm_operations_struct sgx_vm_ops;
 
 #define sgx_pr_ratelimited(level, encl, fmt, ...)			  \
@@ -255,6 +269,8 @@ struct sgx_encl_page *sgx_fault_page(struct vm_area_struct *vma,
 				     unsigned int flags,
 				     struct vm_fault *vmf);
 
+int sgx_get_key_hash(struct crypto_shash *tfm, const void *modulus, void *hash);
+int sgx_get_key_hash_simple(const void *modulus, void *hash);
 
 extern struct mutex sgx_tgid_ctx_mutex;
 extern struct list_head sgx_tgid_ctx_list;
@@ -275,5 +291,17 @@ int sgx_eldu(struct sgx_encl *encl, struct sgx_encl_page *encl_page,
 long modify_range(struct sgx_range *rg, unsigned long flags);
 int remove_page(struct sgx_encl *encl, unsigned long address, bool trim);
 int sgx_get_encl(unsigned long addr, struct sgx_encl **encl);
+
+extern struct sgx_le_ctx sgx_le_ctx;
+
+int sgx_le_init(struct sgx_le_ctx *ctx);
+void sgx_le_exit(struct sgx_le_ctx *ctx);
+void sgx_le_stop(struct sgx_le_ctx *ctx, bool update_users);
+int sgx_le_start(struct sgx_le_ctx *ctx);
+
+int sgx_le_get_token(struct sgx_le_ctx *ctx,
+		     const struct sgx_encl *encl,
+		     const struct sgx_sigstruct *sigstruct,
+		     struct sgx_einittoken *token);
 
 #endif /* __ARCH_X86_INTEL_SGX_H__ */
