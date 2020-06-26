@@ -364,6 +364,60 @@ long sgx_ioc_page_remove(struct file *filep, unsigned int cmd,
 	return ret;
 }
 
+static long sgx_ioc_rdinfo(struct file *filep, unsigned int cmd, unsigned long arg)
+{
+	struct sgx_rdinfo __aligned(32) rdinfo = {};
+	struct sgx_rdinfo *rdinfo_arg = (struct sgx_rdinfo*)arg;
+	unsigned long addr = rdinfo_arg->status;
+	struct sgx_encl *encl = NULL;
+	struct vm_area_struct *vma = NULL;
+	int ret;
+
+	if (sgx_get_encl(addr, &encl)) {
+		return -EINVAL;
+	}
+
+	down_read(&encl->mm->mmap_sem);
+
+	ret = sgx_encl_find(encl->mm, addr, &vma);
+	if (ret || encl != vma->vm_private_data) {
+		up_read(&encl->mm->mmap_sem);
+		ret = ret ? ret : -EINVAL;
+	} else {
+		struct sgx_encl_page *encl_page = sgx_fault_page(vma, addr, SGX_FAULT_RESERVE, NULL);
+
+		up_read(&encl->mm->mmap_sem);
+
+		if (IS_ERR(encl_page))
+		{
+			ret = (PTR_ERR(encl_page) == -EBUSY) ? -EBUSY : -EINVAL;
+		}
+		else
+		{
+			void* epc_va;
+
+			mutex_lock(&encl->lock);
+			epc_va = sgx_get_page(encl_page->epc_page);
+
+			ret = __erdinfo(&rdinfo, epc_va);
+
+			sgx_put_page(epc_va);
+			mutex_unlock(&encl->lock);
+
+			encl_page->flags &= ~SGX_ENCL_PAGE_RESERVED;
+		}
+	}
+
+	kref_put(&encl->refcount, sgx_encl_release);
+
+	if (ret == 0)
+	{
+		*rdinfo_arg = rdinfo;
+	}
+
+	return ret;
+}
+
 typedef long (*sgx_ioc_t)(struct file *filep, unsigned int cmd,
 			  unsigned long arg);
 
@@ -397,6 +451,9 @@ long sgx_ioctl(struct file *filep, unsigned int cmd, unsigned long arg)
 		break;
 	case SGX_IOC_ENCLAVE_PAGE_REMOVE:
 		handler = sgx_ioc_page_remove;
+		break;
+	case SGX_IOC_ENCLAVE_PAGE_RDINFO:
+		handler = sgx_ioc_rdinfo;
 		break;
 	default:
 		return -ENOIOCTLCMD;

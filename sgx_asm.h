@@ -88,6 +88,7 @@ enum sgx_commands {
 	EAUG	= 0xD,
 	EMODPR	= 0xE,
 	EMODT	= 0xF,
+	ERDINFO = 0x10,
 };
 
 #ifdef CONFIG_X86_64
@@ -228,6 +229,11 @@ static inline int __emodt(struct sgx_secinfo *secinfo, void *epc)
 	unsigned long rdx = 0;
 
 	return __encls_ret(EMODT, secinfo, epc, rdx);
+}
+
+static inline int __erdinfo(struct sgx_rdinfo *rdinfo, void *epc)
+{
+        return __encls_ret(ERDINFO, rdinfo, epc, 0);
 }
 
 struct sgx_le_output {

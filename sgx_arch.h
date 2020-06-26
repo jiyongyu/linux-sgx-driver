@@ -159,6 +159,12 @@ struct sgx_secinfo {
 	uint64_t reserved[7];
 } __attribute__((aligned(64)));
 
+struct sgx_rdinfo {
+	uint64_t status;
+	uint64_t flags;
+	uint64_t context;
+};
+
 struct sgx_pcmd {
 	struct sgx_secinfo secinfo;
 	uint64_t enclave_id;
