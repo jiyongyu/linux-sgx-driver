@@ -122,3 +122,14 @@ $ sudo rm -rf "/lib/modules/"`uname -r`"/kernel/drivers/intel/sgx"
 $ sudo /sbin/depmod
 $ sudo /bin/sed -i '/^isgx$/d' /etc/modules
 ```
+
+### Jiyong:
+1. From Andrew's commit comment: quick-and-dirty port of the DCAP/FLC launch enclave to the SGX2 out-of-tree driver
+```
+To build this you must first, build the DCAP driver from:
+https://github.com/intel/SGXDataCenterAttestationPrimitives/tree/master/driver/linux
+... then copy the sgx_le_proxy binary it produces (in the driver/linux/le directory)
+to the build directory of this driver, then build this driver.
+```
+
+2. Made a few changes to update lepubkey at einit.
